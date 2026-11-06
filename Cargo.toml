@@ -2,6 +2,9 @@
 name = "hsmi"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "htop for your GPUs: watch the GEMMs go brrr"
+repository = "https://github.com/jonpojonpo/hsmi"
 
 [dependencies]
 anyhow = "1.0.104"

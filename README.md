@@ -66,3 +66,7 @@ Needs a truecolor terminal (pretty much all modern ones) and the NVIDIA driver (
 - `src/widgets.rs`: gradient meters, area charts, fire, big digits
 - `src/theme.rs`: palettes
 - `src/procinfo.rs`: `/proc` command lines and user names
+
+## License
+
+MIT, see [LICENSE](LICENSE).
