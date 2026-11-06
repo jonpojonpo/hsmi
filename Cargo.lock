@@ -620,6 +620,7 @@ dependencies = [
  "clap",
  "libc",
  "nvml-wrapper",
+ "nvml-wrapper-sys",
  "ratatui",
 ]
 

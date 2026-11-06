@@ -22,7 +22,7 @@ hsmi -i 250     # sample every 250 ms (default 500)
 | **Meters** | htop-style gradient bars with sub-cell precision: SM, memory bandwidth, VRAM, power vs limit, temp vs slowdown threshold, fan, SM clock vs max, PCIe TX/RX vs link maximum. Meters ease smoothly between samples. |
 | **BRR-O-METER** | a Doom-style fire whose heat follows the GEMM intensity, with a big readout behind it |
 | **Charts** | scrolling area charts with eighth-block resolution: SM utilisation (big), power, memory bandwidth, temperature |
-| **Info line** | P-state, memory clock, PCIe link (and whether it's below max), enc/dec, energy used this session, clock-throttle reasons (`PWR CAP`, `HW THERMAL`, `IDLE`, …) |
+| **Info line** | P-state, memory clock, PCIe link (and whether it's below max), enc/dec, energy used this session, clock-throttle reasons (`PWR CAP`, `HW THERMAL`, `VOLT LIMIT` = at max voltage, `IDLE`, …), and an `UNLOCKED` badge if the kernel log shows a `gpu_unlock` module unlocked that GPU |
 | **Processes** | PID, user, compute/graphics, per-process SM% and memory%, VRAM, command line (the script name is highlighted for `python foo.py`) |
 
 ### The BRR number

@@ -33,6 +33,8 @@ pub struct StaticInfo {
     pub bus_width: Option<u32>,
     /// GPM (Hopper+) gives real tensor-pipe activity.
     pub has_gpm: bool,
+    /// The kernel log says a `gpu_unlock` module unlocked this device.
+    pub unlocked: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,6 +151,10 @@ impl NvmlSource {
                 cores: d.num_cores().ok(),
                 bus_width: d.memory_bus_width().ok(),
                 has_gpm,
+                unlocked: d
+                    .pci_info()
+                    .map(|p| kernel_log_unlocked(&p.bus_id))
+                    .unwrap_or(false),
             });
             per.push(PerGpu {
                 last_proc_ts: 0,
@@ -193,23 +199,63 @@ fn pstate_num(p: PerformanceState) -> Option<u8> {
     })
 }
 
-fn throttle_labels(r: ThrottleReasons) -> Vec<&'static str> {
-    let table: &[(ThrottleReasons, &str)] = &[
-        (ThrottleReasons::SW_POWER_CAP, "PWR CAP"),
-        (ThrottleReasons::HW_POWER_BRAKE_SLOWDOWN, "PWR BRAKE"),
-        (ThrottleReasons::SW_THERMAL_SLOWDOWN, "SW THERMAL"),
-        (ThrottleReasons::HW_THERMAL_SLOWDOWN, "HW THERMAL"),
-        (ThrottleReasons::HW_SLOWDOWN, "HW SLOWDOWN"),
-        (ThrottleReasons::SYNC_BOOST, "SYNC BOOST"),
-        (ThrottleReasons::APPLICATIONS_CLOCKS_SETTING, "APP CLOCKS"),
-        (ThrottleReasons::DISPLAY_CLOCK_SETTING, "DISPLAY"),
-        (ThrottleReasons::GPU_IDLE, "IDLE"),
+/// Bits newer drivers report but the public header (and nvml-wrapper) don't name.
+/// `nvidia-smi -q -d PERFORMANCE` calls them "Board Limit" and "Reliability".
+const REASON_BOARD_LIMIT: u64 = 0x200;
+/// Already at the highest voltage the V/F curve allows: clocks can't go higher.
+const REASON_RELIABILITY: u64 = 0x400;
+
+/// Clock event reasons with every bit kept (nvml-wrapper truncates unknown ones).
+fn raw_clock_reasons(d: &nvml_wrapper::Device) -> Option<u64> {
+    let mut r: std::os::raw::c_ulonglong = 0;
+    // SAFETY: valid device handle from a live Nvml, out-pointer to a local.
+    let ret = unsafe {
+        d.nvml()
+            .lib()
+            .nvmlDeviceGetCurrentClocksEventReasons(d.handle(), &mut r)
+    };
+    (ret == nvml_wrapper_sys::bindings::nvmlReturn_enum_NVML_SUCCESS).then_some(r)
+}
+
+fn throttle_labels(r: u64) -> Vec<&'static str> {
+    let table: &[(u64, &str)] = &[
+        (ThrottleReasons::SW_POWER_CAP.bits(), "PWR CAP"),
+        (ThrottleReasons::HW_POWER_BRAKE_SLOWDOWN.bits(), "PWR BRAKE"),
+        (ThrottleReasons::SW_THERMAL_SLOWDOWN.bits(), "SW THERMAL"),
+        (ThrottleReasons::HW_THERMAL_SLOWDOWN.bits(), "HW THERMAL"),
+        (ThrottleReasons::HW_SLOWDOWN.bits(), "HW SLOWDOWN"),
+        (REASON_RELIABILITY, "VOLT LIMIT"),
+        (REASON_BOARD_LIMIT, "BOARD LIMIT"),
+        (ThrottleReasons::SYNC_BOOST.bits(), "SYNC BOOST"),
+        (ThrottleReasons::APPLICATIONS_CLOCKS_SETTING.bits(), "APP CLOCKS"),
+        (ThrottleReasons::DISPLAY_CLOCK_SETTING.bits(), "DISPLAY"),
+        (ThrottleReasons::GPU_IDLE.bits(), "IDLE"),
     ];
     table
         .iter()
-        .filter(|(f, _)| r.contains(*f))
+        .filter(|(f, _)| r & f != 0)
         .map(|(_, s)| *s)
         .collect()
+}
+
+/// Did the kernel log the `gpu_unlock` module unlocking this PCI device?
+/// Reads `dmesg` once at startup; quietly false if it's unavailable or restricted.
+fn kernel_log_unlocked(nvml_bus_id: &str) -> bool {
+    // NVML: "00000000:01:00.0", kernel: "0000:01:00.0".
+    let id = nvml_bus_id.to_ascii_lowercase();
+    let id = id.get(id.len().saturating_sub(12)..).unwrap_or(&id).to_string();
+    let Ok(out) = std::process::Command::new("dmesg")
+        .stderr(std::process::Stdio::null())
+        .output()
+    else {
+        return false;
+    };
+    let log = String::from_utf8_lossy(&out.stdout);
+    // The most recent gpu_unlock status line for this device wins.
+    log.lines()
+        .filter(|l| l.contains(&id) && l.contains("gpu_unlock:"))
+        .last()
+        .is_some_and(|l| l.trim_end().ends_with("gpu_unlock: unlocked"))
 }
 
 impl Source for NvmlSource {
@@ -251,10 +297,7 @@ impl Source for NvmlSource {
                 pcie_width: d.current_pcie_link_width().ok(),
                 enc: d.encoder_utilization().ok().map(|u| u.utilization),
                 dec: d.decoder_utilization().ok().map(|u| u.utilization),
-                throttle: d
-                    .current_throttle_reasons()
-                    .map(throttle_labels)
-                    .unwrap_or_default(),
+                throttle: raw_clock_reasons(&d).map(throttle_labels).unwrap_or_default(),
                 energy_mj: d.total_energy_consumption().ok(),
                 tensor: None,
                 procs: Vec::new(),
@@ -412,6 +455,7 @@ impl Source for DemoSource {
                 cores: Some(16384),
                 bus_width: Some(384),
                 has_gpm: false,
+                unlocked: false,
             })
             .collect()
     }

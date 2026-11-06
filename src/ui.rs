@@ -482,8 +482,13 @@ fn draw_info(f: &mut Frame, g: &GpuState, area: Rect) {
     if let Some(p) = s.pstate {
         let c = if p <= 2 { Color::Rgb(74, 222, 128) } else { Color::Rgb(148, 163, 184) };
         spans.push(badge(&format!("P{p}"), c));
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(" "));
     }
+    if g.info.unlocked {
+        spans.push(badge("UNLOCKED", Color::Rgb(232, 121, 249)));
+        spans.push(Span::raw(" "));
+    }
+    spans.push(Span::raw(" "));
     if let Some(mc) = s.mem_clock {
         spans.push(Span::styled("mem ", m));
         let max = g.info.max_mem_clock.map(|m| format!("/{m}")).unwrap_or_default();
@@ -515,6 +520,7 @@ fn draw_info(f: &mut Frame, g: &GpuState, area: Rect) {
             "PWR CAP" | "PWR BRAKE" => Color::Rgb(251, 146, 60),
             "SW THERMAL" | "HW THERMAL" | "HW SLOWDOWN" => Color::Rgb(248, 113, 113),
             "IDLE" => Color::Rgb(100, 116, 139),
+            "VOLT LIMIT" | "BOARD LIMIT" => Color::Rgb(250, 204, 21),
             _ => Color::Rgb(196, 181, 253),
         };
         spans.push(badge(t, c));
